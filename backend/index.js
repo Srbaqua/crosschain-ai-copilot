@@ -14,22 +14,55 @@ app.post("/api/gemini", async (req, res) => {
   try {
     const { query } = req.body;
 
-    const response = await axios.post(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + process.env.GEMINI_API_KEY,
+    // === Step 1: Call Gemini API ===
+    const geminiResponse = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
-        contents: [{ role: "user", parts: [{ text: query }] }]
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: query }],
+          },
+        ],
       }
     );
 
-    const text =
-      response.data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No response";
-    res.json({ result: text });
+    const aiText =
+      geminiResponse.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response from Gemini";
+
+    // === Step 2: Command Handling (Wallet Example) ===
+    if (aiText.toLowerCase().includes("check_balance")) {
+      try {
+        const balanceRes = await axios.post("http://localhost:5000/api/balance", {
+          address: "0xYourWalletHere", // 🔜 Replace with dynamic extraction from AI/user
+        });
+
+        return res.json({
+          action: "check_balance",
+          result: balanceRes.data.balances,
+        });
+      } catch (balanceErr) {
+        console.error("Balance API Error:", balanceErr.message);
+        return res.status(500).json({
+          error: "Failed to fetch wallet balance",
+          details: balanceErr.message,
+        });
+      }
+    }
+
+    // === Step 3: Default → AI Response ===
+    return res.json({ action: "chat", result: aiText });
+
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ error: "Gemini API error" });
+    console.error("Gemini API Error:", err.response?.data || err.message);
+    return res.status(500).json({
+      error: "Gemini API request failed",
+      details: err.response?.data || err.message,
+    });
   }
 });
+
 
 // Mock Gateway API
 app.post("/api/balance", async (req, res) => {
@@ -38,20 +71,20 @@ app.post("/api/balance", async (req, res) => {
     address,
     balances: {
       ethereum: "0.54 ETH",
-      polygon: "120 MATIC",
-    },
+      polygon: "120 MATIC"
+    }
   });
 });
 
+// Mock: simulate transfer
 app.post("/api/transfer", async (req, res) => {
   const { fromChain, toChain, amount, token } = req.body;
   res.json({
     status: "success",
     txHash: "0x123fakehash",
-    message: `Transferred ${amount} ${token} from ${fromChain} to ${toChain}`,
+    message: `Transferred ${amount} ${token} from ${fromChain} to ${toChain}`
   });
 });
-
 app.get("/", (req, res) => {
   res.send("🚀 Cross-Chain AI Copilot Backend is running!");
 });
